@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>DEEP HUNT - Mergulhe. Atire. Sobreviva.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Rajdhani:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Canvas Principal -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- ================= HUD IN-GAME ================= -->
+        <div id="hud-overlay">
+            <!-- Top Bar -->
+            <div class="hud-top-bar">
+                <!-- Cápsula de Pontuação -->
+                <div class="hud-capsule score-capsule">
+                    <span class="hud-icon">🏆</span>
+                    <span id="hud-score">0</span>
+                </div>
+
+                <!-- Cápsula de Vidas -->
+                <div class="hud-capsule hearts-capsule">
+                    <div id="hud-hearts">❤️ ❤️ ❤️</div>
+                </div>
+
+                <!-- Cápsula de Tempo -->
+                <div class="hud-capsule timer-capsule">
+                    <span class="hud-icon">🕒</span>
+                    <span id="hud-timer">00:00</span>
+                </div>
+
+                <!-- Botão de Pausa -->
+                <button id="hud-pause-btn" class="hud-btn pause-btn" title="Pausar jogo">⏸</button>
+            </div>
+
+            <!-- Combo Banner -->
+            <div id="hud-combo-container" class="combo-container hidden">
+                <div id="hud-combo-text" class="combo-text">COMBO x2</div>
+                <div class="combo-bar-wrap">
+                    <div id="hud-combo-bar" class="combo-bar"></div>
+                </div>
+            </div>
+
+            <!-- Bottom Left: Cartão de Arma e Munição -->
+            <div class="hud-bottom-bar">
+                <div class="hud-capsule weapon-capsule">
+                    <div class="weapon-icon">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M2 12h14l4-4h2v6l-2 2h-4l-2 4h-4l1-4H2v-4z" />
+                        </svg>
+                    </div>
+                    <span id="hud-ammo">8/∞</span>
+                </div>
+            </div>
+
+            <!-- Banner de Anúncio de Nova Região -->
+            <div id="zone-banner" class="zone-banner hidden">ENTRANDO EM: RECIFE</div>
+
+            <!-- Contêiner de Notificações Toast -->
+            <div id="toast-container"></div>
+
+            <!-- Controles Virtuais Touch (Mobile / Tablet) -->
+            <div id="touch-controls" class="touch-controls hidden">
+                <div id="virtual-joystick" class="joystick-base">
+                    <div id="joystick-stick" class="joystick-stick"></div>
+                </div>
+                <button id="mobile-shoot-btn" class="mobile-shoot-btn">
+                    <div class="shoot-btn-inner">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#00f7ff" stroke-width="2">
+                            <circle cx="12" cy="12" r="9" />
+                            <line x1="12" y1="1" x2="12" y2="7" />
+                            <line x1="12" y1="17" x2="12" y2="23" />
+                            <line x1="1" y1="12" x2="7" y2="12" />
+                            <line x1="17" y1="12" x2="23" y2="12" />
+                            <circle cx="12" cy="12" r="2" fill="#00f7ff" />
+                        </svg>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- ================= MENU PRINCIPAL ================= -->
+        <div id="main-menu-screen" class="ui-screen">
+            <div class="menu-content-wrapper">
+                <!-- Logotipo com Barbatana de Tubarão -->
+                <div class="menu-logo-container">
+                    <div class="shark-fin-icon">
+                        <svg width="68" height="52" viewBox="0 0 100 80">
+                            <!-- Barbatana estilizada de tubarão cortando a água -->
+                            <path d="M20 70 Q 55 10 90 5 Q 75 45 60 70 Z" fill="#00e5ff" />
+                            <path d="M25 70 Q 52 20 82 15 Q 68 45 55 70 Z" fill="#ffffff" opacity="0.3" />
+                            <path d="M5 70 Q 30 65 55 70 T 95 70" stroke="#00b4d8" stroke-width="4" fill="none" stroke-linecap="round" />
+                            <path d="M15 75 Q 35 72 65 75 T 90 75" stroke="#0077b6" stroke-width="3" fill="none" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <h1 class="game-title">DEEP HUNT</h1>
+                    <div class="game-tagline">MERGULHE. ATIRE. SOBREVIVA.</div>
+                </div>
+
+                <!-- Botão Principal Jogar -->
+                <button id="menu-play-btn" class="btn btn-play">
+                    <span class="btn-play-icon">▶</span>
+                    <span>JOGAR</span>
+                </button>
+
+                <!-- Grid de Botões Secundários -->
+                <div class="menu-btn-grid">
+                    <button id="menu-ranking-btn" class="btn btn-secondary">
+                        <span class="btn-icon">🏆</span> RANKING
+                    </button>
+                    <button id="menu-skins-btn" class="btn btn-secondary">
+                        <span class="btn-icon">👨🚀</span> SKINS
+                    </button>
+                    <button id="menu-missions-btn" class="btn btn-secondary">
+                        <span class="btn-icon">🎯</span> MISSÕES
+                    </button>
+                    <button id="menu-guide-btn" class="btn btn-secondary">
+                        <span class="btn-icon">📖</span> GUIA & MUNDOS
+                    </button>
+                    <button id="menu-settings-btn" class="btn btn-secondary">
+                        <span class="btn-icon">⚙</span> CONFIGURAÇÕES
+                    </button>
+                </div>
+
+                <!-- Toggle Rápido de Áudio no Menu -->
+                <button id="menu-sound-toggle" class="btn-sound-toggle">
+                    🔊 SOM: LIGADO
+                </button>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: SKINS DO MERGULHADOR ================= -->
+        <div id="skins-modal" class="modal-overlay hidden">
+            <div class="modal-card modal-large">
+                <div class="modal-header">
+                    <h2>👨🚀 SKINS DO MERGULHADOR</h2>
+                    <button class="modal-close-btn" data-close-modal="skins-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-info-text">
+                        Skins são apenas cosméticas e não afetam o desempenho no jogo. Desbloqueie novas roupas atingindo marcas de pontuação!
+                    </p>
+                    <div id="skins-grid" class="skins-grid">
+                        <!-- Gerado dinamicamente via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: GUIA & BESTIÁRIO ================= -->
+        <div id="guide-modal" class="modal-overlay hidden">
+            <div class="modal-card modal-large">
+                <div class="modal-header">
+                    <h2>📖 BESTIÁRIO & PROGRESSÃO</h2>
+                    <button class="modal-close-btn" data-close-modal="guide-modal">✕</button>
+                </div>
+                <div class="modal-body guide-grid-layout">
+                    <!-- Coluna 1: Criaturas -->
+                    <div class="guide-column">
+                        <h3>EXEMPLOS DE CRIATURAS</h3>
+
+                        <div class="creature-group">
+                            <div class="group-title text-common">COMUNS (Poucos pontos)</div>
+                            <div class="guide-item"><span class="item-name">🐟 Peixe Pequeno</span> <span class="item-pts">+10 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐠 Peixe-Palhaço</span> <span class="item-pts">+15 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🪼 Água-Viva</span> <span class="item-pts">+15 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🦀 Caranguejo</span> <span class="item-pts">+20 pts</span></div>
+                            <div class="guide-item"><span class="item-name">💡 Peixe-Lanterna</span> <span class="item-pts">+35 pts</span></div>
+                        </div>
+
+                        <div class="creature-group">
+                            <div class="group-title text-dangerous">PERIGOSAS (Pontos médios)</div>
+                            <div class="guide-item"><span class="item-name">🦈 Tubarão</span> <span class="item-pts">+100 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🔨 Tubarão-Martelo</span> <span class="item-pts">+150 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐙 Polvo Gigante</span> <span class="item-pts">+200 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🦑 Lula Gigante</span> <span class="item-pts">+350 pts</span></div>
+                        </div>
+
+                        <div class="creature-group">
+                            <div class="group-title text-legendary">PRÉ-HISTÓRICAS / LENDÁRIAS (Muitos pontos)</div>
+                            <div class="guide-item"><span class="item-name">🛡️ Dunkleosteus</span> <span class="item-pts">+600 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🦈 Megalodon</span> <span class="item-pts">+1.500 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐊 Mosasaurus</span> <span class="item-pts">+2.000 pts</span></div>
+                            <div class="guide-item"><span class="item-name">👾 Abyssal Leviathan</span> <span class="item-pts">+3.000 pts</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Coluna 2: Progressão dos Mundos -->
+                    <div class="guide-column">
+                        <h3>PROGRESSÃO DOS MUNDOS</h3>
+
+                        <div class="zone-card zone-reef">
+                            <div class="zone-badge">0 – 1.000 pts</div>
+                            <h4>🌴 Recife</h4>
+                            <p>Águas claras, corais coloridos e pequenos peixes velozes.</p>
+                        </div>
+
+                        <div class="zone-card zone-deep">
+                            <div class="zone-badge">1.000 – 5.000 pts</div>
+                            <h4>🌑 Águas Profundas</h4>
+                            <p>O ambiente escurece. Tubarões, polvos e lulas gigantes começam a caçar.</p>
+                        </div>
+
+                        <div class="zone-card zone-abyss">
+                            <div class="zone-badge">5.000 – 10.000 pts</div>
+                            <h4>🦴 Abismo Pré-Histórico</h4>
+                            <p>Ruínas antigas e fósseis titânicos. Lar do lendário Megalodon e Mosasaurus.</p>
+                        </div>
+
+                        <div class="zone-card zone-unknown">
+                            <div class="zone-badge">10.000+ pts</div>
+                            <h4>👁️ Zona Desconhecida</h4>
+                            <p>Abismo bioluminescente inexplorado. O colosso Abyssal Leviathan reina aqui.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: RANKING LOCAL ================= -->
+        <div id="ranking-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>🏆 RANKING DOS MAIORES MERGULHADORES</h2>
+                    <button class="modal-close-btn" data-close-modal="ranking-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div id="ranking-list" class="ranking-table">
+                        <!-- Linhas geradas via JS -->
+                    </div>
+
+                    <div class="ranking-personal-card">
+                        <span class="star-icon">⭐</span>
+                        <div>
+                            <div class="personal-label">SEU MELHOR RESULTADO</div>
+                            <div id="ranking-personal-best" class="personal-score">86.300</div>
+                        </div>
+                    </div>
+
+                    <div class="ranking-tip-card">
+                        <span class="tip-icon">💡</span>
+                        <p>Quanto maiores e mais resistentes as criaturas marinhas, mais pontos você ganha... mas elas são mais lentas e perigosas!</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: MISSÕES ================= -->
+        <div id="missions-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>🎯 MISSÕES & CONQUISTAS</h2>
+                    <button class="modal-close-btn" data-close-modal="missions-modal">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div id="missions-list" class="missions-list">
+                        <!-- Gerado dinamicamente via JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: CONFIGURAÇÕES ================= -->
+        <div id="settings-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h2>⚙ CONFIGURAÇÕES</h2>
+                    <button class="modal-close-btn" data-close-modal="settings-modal">✕</button>
+                </div>
+                <div class="modal-body settings-options">
+                    <div class="setting-row">
+                        <label for="setting-player-name">Nome do Mergulhador:</label>
+                        <input type="text" id="setting-player-name" maxlength="15" class="setting-input" value="Pedro">
+                    </div>
+                    <div class="setting-row">
+                        <span>🔊 Efeitos Sonoros (SFX):</span>
+                        <input type="checkbox" id="setting-sound" checked class="setting-checkbox">
+                    </div>
+                    <div class="setting-row">
+                        <span>🎵 Música Ambiente:</span>
+                        <input type="checkbox" id="setting-music" checked class="setting-checkbox">
+                    </div>
+                    <div class="setting-row">
+                        <span>✨ Qualidade Gráfica (Partículas):</span>
+                        <input type="checkbox" id="setting-particles" checked class="setting-checkbox">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: PAUSA ================= -->
+        <div id="pause-modal" class="modal-overlay hidden">
+            <div class="modal-card modal-small">
+                <div class="modal-header">
+                    <h2>⏸ JOGO PAUSADO</h2>
+                </div>
+                <div class="modal-body pause-btn-group">
+                    <button id="pause-resume-btn" class="btn btn-play">RETOMAR</button>
+                    <button id="pause-restart-btn" class="btn btn-secondary">REINICIAR PARTIDA</button>
+                    <button id="pause-menu-btn" class="btn btn-secondary">MENU PRINCIPAL</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MODAL: GAME OVER ================= -->
+        <div id="game-over-modal" class="modal-overlay hidden">
+            <div class="modal-card modal-game-over">
+                <div class="go-header">
+                    <h1 class="go-title">GAME OVER</h1>
+                    <div id="go-new-record-badge" class="new-record-badge hidden">🏆 NOVO RECORDE! 🏆</div>
+                </div>
+
+                <div class="go-stats-grid">
+                    <div class="go-stat-card">
+                        <div class="go-stat-label">Pontuação</div>
+                        <div id="go-final-score" class="go-stat-value text-accent">0</div>
+                    </div>
+                    <div class="go-stat-card">
+                        <div class="go-stat-label">Maior Pontuação</div>
+                        <div id="go-high-score" class="go-stat-value">0</div>
+                    </div>
+                    <div class="go-stat-card">
+                        <div class="go-stat-label">Criaturas Eliminadas</div>
+                        <div id="go-creatures" class="go-stat-value">0</div>
+                    </div>
+                    <div class="go-stat-card">
+                        <div class="go-stat-label">Melhor Combo</div>
+                        <div id="go-max-combo" class="go-stat-value">x1</div>
+                    </div>
+                </div>
+
+                <div class="go-name-input-wrap">
+                    <label for="go-player-name">Seu Nome para o Ranking:</label>
+                    <input type="text" id="go-player-name" maxlength="15" class="setting-input" value="Pedro">
+                </div>
+
+                <div class="go-actions">
+                    <button id="go-restart-btn" class="btn btn-play">JOGAR NOVAMENTE</button>
+                    <button id="go-menu-btn" class="btn btn-secondary">MENU PRINCIPAL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts do Jogo Modularizados -->
+    <script src="js/storage.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/bullets.js"></script>
+    <script src="js/creatures.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/game.js"></script>
+</body>
+</html>
