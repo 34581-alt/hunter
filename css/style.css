@@ -106,15 +106,50 @@ html, body {
 }
 
 .hearts-capsule {
-    font-size: 1.25rem;
-    letter-spacing: 4px;
+    font-size: 1.05rem;
+    letter-spacing: 1px;
     box-shadow: 0 0 16px rgba(255, 51, 102, 0.25);
     border-color: rgba(255, 51, 102, 0.4);
+    transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hearts-capsule .hud-icon {
+    font-size: 1rem;
+    filter: drop-shadow(0 0 6px rgba(255, 51, 102, 0.8));
+}
+
+#hud-hearts {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    letter-spacing: 0;
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+/* Animação ao perder um coração */
+.hearts-capsule.damaged {
+    animation: heartsHit 0.6s ease-out;
+    border-color: var(--neon-red);
+    box-shadow: 0 0 26px rgba(255, 51, 102, 0.75);
+}
+
+@keyframes heartsHit {
+    0%   { transform: scale(1.14) translateX(-4px); }
+    20%  { transform: scale(1.08) translateX(4px); }
+    40%  { transform: scale(1.04) translateX(-3px); }
+    60%  { transform: scale(1.02) translateX(2px); }
+    80%  { transform: scale(1.01) translateX(-1px); }
+    100% { transform: scale(1) translateX(0); }
 }
 
 .timer-capsule {
     color: #e0f2fe;
     font-size: 1.2rem;
+}
+
+#hud-hearts span.heart-empty {
+    filter: grayscale(1) brightness(0.6);
 }
 
 /* Botões do HUD */

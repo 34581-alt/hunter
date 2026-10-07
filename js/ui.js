@@ -31,7 +31,39 @@ class UIManager {
         // Controles de áudio no menu
         this.soundToggleBtn = document.getElementById('menu-sound-toggle');
 
+        // Controle de timers de UI (banner/toast) para limpeza em Game Over / restart
+        this.pendingTimers = [];
+        this.lastHealth = null;
+
         this.initEventListeners();
+    }
+
+    /** Registra um setTimeout vinculado ao jogo (limpo no restart / menu) */
+    trackTimer(id) {
+        this.pendingTimers.push(id);
+        // poda: mantém apenas os 40 mais recentes (os antigos já dispararam)
+        if (this.pendingTimers.length > 40) {
+            this.pendingTimers.splice(0, this.pendingTimers.length - 40);
+        }
+        return id;
+    }
+
+    /** Cancela TODOS os timers de UI pendentes (evita timers zumbis após Game Over) */
+    clearPendingTimers() {
+        this.pendingTimers.forEach(id => clearTimeout(id));
+        this.pendingTimers = [];
+        if (this.zoneBanner) {
+            this.zoneBanner.classList.remove('animate-banner');
+            this.zoneBanner.classList.add('hidden');
+        }
+    }
+
+    setPauseVisible(visible) {
+        if (this.pauseScreen) this.pauseScreen.classList.toggle('hidden', !visible);
+    }
+
+    setGameOverVisible(visible) {
+        if (this.gameOverScreen) this.gameOverScreen.classList.toggle('hidden', !visible);
     }
 
     initEventListeners() {
@@ -70,8 +102,8 @@ class UIManager {
 
     showMainMenu() {
         if (this.mainMenuScreen) this.mainMenuScreen.classList.remove('hidden');
-        if (this.gameOverScreen) this.gameOverScreen.classList.add('hidden');
-        if (this.pauseScreen) this.pauseScreen.classList.add('hidden');
+        this.setGameOverVisible(false);
+        this.setPauseVisible(false);
     }
 
     hideMainMenu() {
@@ -102,13 +134,26 @@ class UIManager {
             this.scoreDisplay.textContent = score.toLocaleString('pt-BR');
         }
 
-        // Vidas ❤️ ❤️ ❤️
+        // Vidas ❤️ (agora 5 corações: cheios + vazios)
         if (this.heartsDisplay) {
             let heartsStr = '';
             for (let i = 0; i < maxHealth; i++) {
-                heartsStr += i < health ? '❤️ ' : '🖤 ';
+                heartsStr += i < health ? '❤️' : '🖤';
             }
-            this.heartsDisplay.innerHTML = heartsStr.trim();
+            this.heartsDisplay.textContent = heartsStr;
+
+            // Animação ao perder um coração
+            if (this.lastHealth !== null && health < this.lastHealth) {
+                const capsule = this.heartsDisplay.closest('.hearts-capsule');
+                if (capsule) {
+                    capsule.classList.remove('damaged');
+                    // força reinício da animação CSS
+                    void capsule.offsetWidth;
+                    capsule.classList.add('damaged');
+                    this.trackTimer(setTimeout(() => capsule.classList.remove('damaged'), 650));
+                }
+            }
+            this.lastHealth = health;
         }
 
         // Cronômetro (03:12)
@@ -151,10 +196,10 @@ class UIManager {
         this.zoneBanner.classList.remove('hidden');
         this.zoneBanner.classList.add('animate-banner');
 
-        setTimeout(() => {
+        this.trackTimer(setTimeout(() => {
             this.zoneBanner.classList.remove('animate-banner');
             this.zoneBanner.classList.add('hidden');
-        }, 3000);
+        }, 3000));
     }
 
     // Notificação Toast de Missão / Skin
@@ -176,17 +221,17 @@ class UIManager {
             gameAudio.playCombo(3);
         }
 
-        setTimeout(() => {
+        this.trackTimer(setTimeout(() => {
             toast.classList.add('toast-fadeout');
-            setTimeout(() => toast.remove(), 400);
-        }, 3500);
+            this.trackTimer(setTimeout(() => toast.remove(), 400));
+        }, 3500));
     }
 
     // ================= TELA DE GAME OVER =================
 
     showGameOver({ score, highScore, isNewRecord, creaturesKilled, maxCombo }) {
         if (!this.gameOverScreen) return;
-        this.gameOverScreen.classList.remove('hidden');
+        this.setGameOverVisible(true);
 
         document.getElementById('go-final-score').textContent = score.toLocaleString('pt-BR');
         document.getElementById('go-high-score').textContent = highScore.toLocaleString('pt-BR');

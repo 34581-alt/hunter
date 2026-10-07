@@ -24,9 +24,10 @@
                     <span id="hud-score">0</span>
                 </div>
 
-                <!-- Cápsula de Vidas -->
-                <div class="hud-capsule hearts-capsule">
-                    <div id="hud-hearts">❤️ ❤️ ❤️</div>
+                <!-- Cápsula de Vidas (5 corações) -->
+                <div class="hud-capsule hearts-capsule" title="Vida do mergulhador">
+                    <span class="hud-icon">🫀</span>
+                    <div id="hud-hearts">❤️❤️❤️❤️❤️</div>
                 </div>
 
                 <!-- Cápsula de Tempo -->
@@ -145,6 +146,7 @@
                 <div class="modal-body">
                     <p class="modal-info-text">
                         Skins são apenas cosméticas e não afetam o desempenho no jogo. Desbloqueie novas roupas atingindo marcas de pontuação!
+                        <br>❤️ Você começa cada mergulho com 5 corações e invulnerabilidade curta após cada ataque.
                     </p>
                     <div id="skins-grid" class="skins-grid">
                         <!-- Gerado dinamicamente via JS -->
@@ -166,28 +168,42 @@
                         <h3>EXEMPLOS DE CRIATURAS</h3>
 
                         <div class="creature-group">
-                            <div class="group-title text-common">COMUNS (Poucos pontos)</div>
+                            <div class="group-title text-common">COMUNS (Poucos pontos - inofensivas, exceto águas-vivas)</div>
                             <div class="guide-item"><span class="item-name">🐟 Peixe Pequeno</span> <span class="item-pts">+10 pts</span></div>
                             <div class="guide-item"><span class="item-name">🐠 Peixe-Palhaço</span> <span class="item-pts">+15 pts</span></div>
-                            <div class="guide-item"><span class="item-name">🪼 Água-Viva</span> <span class="item-pts">+15 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🪼 Água-Viva (ferrão: 1 coração)</span> <span class="item-pts">+15 pts</span></div>
                             <div class="guide-item"><span class="item-name">🦀 Caranguejo</span> <span class="item-pts">+20 pts</span></div>
+                            <div class="guide-item"><span class="item-name">⭐ Estrela-do-Mar</span> <span class="item-pts">+25 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐡 Baiacu</span> <span class="item-pts">+25 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐴 Cavalo-Marinho</span> <span class="item-pts">+30 pts</span></div>
                             <div class="guide-item"><span class="item-name">💡 Peixe-Lanterna</span> <span class="item-pts">+35 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🦑 Lula Pequena</span> <span class="item-pts">+40 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐍 Moreia</span> <span class="item-pts">+50 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🥏 Arraia</span> <span class="item-pts">+60 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐢 Tartaruga Marinha</span> <span class="item-pts">+90 pts</span></div>
                         </div>
 
                         <div class="creature-group">
-                            <div class="group-title text-dangerous">PERIGOSAS (Pontos médios)</div>
+                            <div class="group-title text-dangerous">PERIGOSAS (1 coração por ataque, depois RECUAM)</div>
                             <div class="guide-item"><span class="item-name">🦈 Tubarão</span> <span class="item-pts">+100 pts</span></div>
                             <div class="guide-item"><span class="item-name">🔨 Tubarão-Martelo</span> <span class="item-pts">+150 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🥏 Arraia Manta Gigante</span> <span class="item-pts">+180 pts</span></div>
                             <div class="guide-item"><span class="item-name">🐙 Polvo Gigante</span> <span class="item-pts">+200 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐍 Moreia Gigante</span> <span class="item-pts">+220 pts</span></div>
                             <div class="guide-item"><span class="item-name">🦑 Lula Gigante</span> <span class="item-pts">+350 pts</span></div>
                         </div>
 
                         <div class="creature-group">
-                            <div class="group-title text-legendary">PRÉ-HISTÓRICAS / LENDÁRIAS (Muitos pontos)</div>
+                            <div class="group-title text-legendary">PRÉ-HISTÓRICAS / ABISSAIS (Muitos pontos)</div>
                             <div class="guide-item"><span class="item-name">🛡️ Dunkleosteus</span> <span class="item-pts">+600 pts</span></div>
+                            <div class="guide-item"><span class="item-name">👾 Void-Walker</span> <span class="item-pts">+700 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🪚 Helicoprion</span> <span class="item-pts">+800 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🔦 Deep-Sea Nightmare</span> <span class="item-pts">+900 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐊 Pliosaurus</span> <span class="item-pts">+1.000 pts</span></div>
                             <div class="guide-item"><span class="item-name">🦈 Megalodon</span> <span class="item-pts">+1.500 pts</span></div>
-                            <div class="guide-item"><span class="item-name">🐊 Mosasaurus</span> <span class="item-pts">+2.000 pts</span></div>
-                            <div class="guide-item"><span class="item-name">👾 Abyssal Leviathan</span> <span class="item-pts">+3.000 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐋 Mosasaurus</span> <span class="item-pts">+2.000 pts</span></div>
+                            <div class="guide-item"><span class="item-name">🐳 Livyatan</span> <span class="item-pts">+2.500 pts</span></div>
+                            <div class="guide-item"><span class="item-name">👁️ Abyssal Leviathan</span> <span class="item-pts">+3.000 pts</span></div>
                         </div>
                     </div>
 
@@ -351,6 +367,10 @@
     <!-- Scripts do Jogo Modularizados -->
     <script src="js/storage.js"></script>
     <script src="js/audio.js"></script>
+    <script src="js/creature-art.js"></script>
+    <!-- ^ sprites 2D estilizados de todas as criaturas (deve vir antes de creatures.js) -->
+    <script src="js/environment.js"></script>
+    <!-- ^ cenário submarino em camadas (deve vir antes de game.js) -->
     <script src="js/player.js"></script>
     <script src="js/bullets.js"></script>
     <script src="js/creatures.js"></script>

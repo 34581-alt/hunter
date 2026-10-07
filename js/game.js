@@ -1,9 +1,22 @@
 /**
  * DEEP HUNT - Game Engine
- * Loop principal, renderização do oceano em camadas de parallax, física de colisões,
- * progressão de regiões, combos e controles (PC + Mobile).
+ * ==================================================================
+ * Loop principal, cenário submarino em camadas (EnvironmentRenderer),
+ * colisões, progressão de regiões, combos e controles (PC + Mobile).
+ *
+ * FLUXO DE ESTADOS (corrigido):
+ *
+ *   MENU -> PLAYING <-> PAUSED
+ *              |
+ *              v  (vida chega a 0)
+ *            DYING  -> (congela IA, desliga dano, controles off)
+ *              |
+ *              v
+ *           GAMEOVER -> (tela aparece SEMPRE, jogo nunca trava)
+ *              |
+ *              v
+ *           startGame() = reset completo (5 corações, IA, spawns)
  */
-
 class GameEngine {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
@@ -13,32 +26,43 @@ class GameEngine {
         this.width = 1280;
         this.height = 720;
 
-        // Estado do jogo: 'MENU', 'PLAYING', 'PAUSED', 'GAMEOVER'
+        // Estado do jogo: 'MENU', 'PLAYING', 'PAUSED', 'DYING', 'GAMEOVER'
         this.state = 'MENU';
 
         // Entidades
         this.player = new Player(this.width / 2, this.height / 2);
         this.ambientBubbles = [];
 
+        // Cenário submarino em camadas (novo)
+        this.environment = new EnvironmentRenderer(this.width, this.height);
+
         // Pontuação e Combos
         this.score = 0;
         this.comboKills = 0;
         this.comboMultiplier = 1;
         this.comboTimer = 0;
-        this.maxComboTimer = 3.8; // Segundos para sustentar o combo
+        this.maxComboTimer = 3.8;
         this.maxComboReached = 1;
 
         // Estatísticas da partida
         this.creaturesKilled = 0;
         this.gameTimeSeconds = 0;
         this.largestCreatureName = 'Nenhuma';
+        this.largestCreaturePoints = -1;
 
         // Região atual do oceano
-        this.currentZone = 'reef'; // 'reef', 'deep', 'abyss', 'unknown'
+        this.currentZone = 'reef';
 
         // Screen Shake
         this.screenShakeTime = 0;
         this.screenShakeIntensity = 0;
+
+        // Morte / Game Over
+        this.deathTimer = 0;
+        this.deathDuration = 1.2;
+        this.deathFade = 0;
+        this.gameOverPending = false;
+        this.errorCount = 0;
 
         // Controles e Inputs
         this.input = {
@@ -51,46 +75,53 @@ class GameEngine {
 
         // Timestamp para delta time
         this.lastTime = performance.now();
+        this.lastDt = 0.016;
 
         // Inicialização
         this.initResize();
         this.initInputs();
         this.initAmbientParticles();
         this.setupButtons();
+        this.initVisibilityHandling();
 
-        // Criaturas calmas para animação inicial de fundo no Menu
+        // Criaturas calmas para animação de fundo no Menu
         for (let i = 0; i < 4; i++) {
-            const types = ['peixe_pequeno', 'peixe_palhaco', 'agua_viva'];
+            const types = ['peixe_pequeno', 'peixe_palhaco', 'agua_viva', 'tartaruga_marinha'];
             const t = types[i % types.length];
             const c = creatureManager.spawnCreature(t, this.width, this.height);
             c.x = Math.random() * this.width;
         }
 
-        // Inicia o loop
-        requestAnimationFrame((t) => this.loop(t));
+        // Inicia o loop (agendado dentro do próprio loop, sempre primeiro)
+        this.loopId = requestAnimationFrame((t) => this.loop(t));
     }
 
     initResize() {
         const resize = () => {
-            const container = document.getElementById('game-container');
-            const cw = container.clientWidth;
-            const ch = container.clientHeight;
-
-            // Mantém aspecto 16:9 arcade nítido
             this.canvas.width = this.width;
             this.canvas.height = this.height;
         };
-
         window.addEventListener('resize', resize);
         resize();
     }
 
+    initVisibilityHandling() {
+        // Evita "saltos" de delta time e mortes injustas quando a aba perde foco
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this.lastTime = performance.now();
+                if (this.state === 'PLAYING') this.togglePause(true);
+            }
+        });
+        window.addEventListener('blur', () => {
+            this.lastTime = performance.now();
+        });
+    }
+
     initInputs() {
-        // Teclado
         window.addEventListener('keydown', (e) => {
             this.input.keys[e.code] = true;
 
-            // ESC para pausar/despausar
             if (e.code === 'Escape' && (this.state === 'PLAYING' || this.state === 'PAUSED')) {
                 this.togglePause();
             }
@@ -100,7 +131,6 @@ class GameEngine {
             this.input.keys[e.code] = false;
         });
 
-        // Mouse no Canvas
         const updateMousePos = (e) => {
             const rect = this.canvas.getBoundingClientRect();
             const scaleX = this.canvas.width / rect.width;
@@ -112,7 +142,7 @@ class GameEngine {
         this.canvas.addEventListener('mousemove', updateMousePos);
 
         this.canvas.addEventListener('mousedown', (e) => {
-            if (e.button === 0) { // Botão esquerdo
+            if (e.button === 0) {
                 this.input.isMouseDown = true;
                 if (this.state === 'PLAYING') {
                     this.player.tryShoot();
@@ -121,12 +151,9 @@ class GameEngine {
         });
 
         window.addEventListener('mouseup', (e) => {
-            if (e.button === 0) {
-                this.input.isMouseDown = false;
-            }
+            if (e.button === 0) this.input.isMouseDown = false;
         });
 
-        // Controles de Toque (Mobile / Tablet)
         this.initTouchControls();
     }
 
@@ -138,13 +165,9 @@ class GameEngine {
 
         if (!touchZone || !joystickBase || !shootBtn) return;
 
-        // Detecta se dispositivo suporta touch
         const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-        if (isTouch) {
-            touchZone.classList.remove('hidden');
-        }
+        if (isTouch) touchZone.classList.remove('hidden');
 
-        // Variáveis de controle do joystick virtual
         let joyTouchId = null;
         let joyCenter = { x: 0, y: 0 };
         const maxDist = 45;
@@ -154,10 +177,7 @@ class GameEngine {
             const touch = e.changedTouches[0];
             joyTouchId = touch.identifier;
             const rect = joystickBase.getBoundingClientRect();
-            joyCenter = {
-                x: rect.left + rect.width / 2,
-                y: rect.top + rect.height / 2
-            };
+            joyCenter = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
             this.input.joystick.active = true;
         }, { passive: false });
 
@@ -171,11 +191,9 @@ class GameEngine {
                     const dist = Math.hypot(dx, dy);
                     const clampedDist = Math.min(dist, maxDist);
                     const angle = Math.atan2(dy, dx);
-
                     const stickX = Math.cos(angle) * clampedDist;
                     const stickY = Math.sin(angle) * clampedDist;
                     joystickStick.style.transform = `translate(${stickX}px, ${stickY}px)`;
-
                     this.input.joystick.x = (dx / maxDist);
                     this.input.joystick.y = (dy / maxDist);
                     break;
@@ -199,13 +217,10 @@ class GameEngine {
         window.addEventListener('touchend', endJoystick);
         window.addEventListener('touchcancel', endJoystick);
 
-        // Botão de tiro touch
         shootBtn.addEventListener('touchstart', (e) => {
             e.preventDefault();
             this.input.isMouseDown = true;
-            if (this.state === 'PLAYING') {
-                this.player.tryShoot();
-            }
+            if (this.state === 'PLAYING') this.player.tryShoot();
         }, { passive: false });
 
         shootBtn.addEventListener('touchend', (e) => {
@@ -215,28 +230,21 @@ class GameEngine {
     }
 
     setupButtons() {
-        // Botão JOGAR no menu
-        const btnPlay = document.getElementById('menu-play-btn');
-        if (btnPlay) {
-            btnPlay.addEventListener('click', () => this.startGame());
-        }
+        document.getElementById('menu-play-btn')?.addEventListener('click', () => this.startGame());
 
-        // Botões de abertura de modais no menu
         document.getElementById('menu-ranking-btn')?.addEventListener('click', () => gameUI.showModal('ranking-modal'));
         document.getElementById('menu-skins-btn')?.addEventListener('click', () => gameUI.showModal('skins-modal'));
         document.getElementById('menu-missions-btn')?.addEventListener('click', () => gameUI.showModal('missions-modal'));
         document.getElementById('menu-guide-btn')?.addEventListener('click', () => gameUI.showModal('guide-modal'));
         document.getElementById('menu-settings-btn')?.addEventListener('click', () => gameUI.showModal('settings-modal'));
 
-        // Botão de pausa no HUD
         document.getElementById('hud-pause-btn')?.addEventListener('click', () => this.togglePause());
 
-        // Botões do modal de pausa
         document.getElementById('pause-resume-btn')?.addEventListener('click', () => this.togglePause());
         document.getElementById('pause-restart-btn')?.addEventListener('click', () => this.startGame());
         document.getElementById('pause-menu-btn')?.addEventListener('click', () => this.returnToMenu());
 
-        // Botões da tela de Game Over
+        // Reinício a partir da tela de Game Over (funciona sempre)
         document.getElementById('go-restart-btn')?.addEventListener('click', () => {
             this.saveCurrentPlayerName();
             this.startGame();
@@ -256,7 +264,7 @@ class GameEngine {
 
     initAmbientParticles() {
         this.ambientBubbles = [];
-        for (let i = 0; i < 35; i++) {
+        for (let i = 0; i < 30; i++) {
             const p = new BubbleParticle(Math.random() * this.width, Math.random() * this.height, true);
             this.ambientBubbles.push(p);
         }
@@ -265,10 +273,10 @@ class GameEngine {
     // ================= FLUXO DA PARTIDA =================
 
     startGame() {
-        // Inicializa o contexto de áudio na primeira interação
         gameAudio.initContext();
         gameAudio.startMusic();
 
+        // ---- Reset TOTAL de estado (nada de sobras da partida anterior) ----
         this.state = 'PLAYING';
         this.score = 0;
         this.comboKills = 0;
@@ -278,45 +286,144 @@ class GameEngine {
         this.creaturesKilled = 0;
         this.gameTimeSeconds = 0;
         this.largestCreatureName = 'Nenhuma';
+        this.largestCreaturePoints = -1;
         this.currentZone = 'reef';
+        this.screenShakeTime = 0;
+        this.screenShakeIntensity = 0;
+        this.deathTimer = 0;
+        this.deathFade = 0;
+        this.gameOverPending = false;
+        this.errorCount = 0;
+        this.lastTime = performance.now();
 
-        // Reseta entidades
+        // Entidades
         this.player.reset(this.width / 2, this.height / 2);
         bulletManager.reset();
-        creatureManager.reset();
+        creatureManager.reset();          // <- também descongela a IA
         creatureManager.setZone('reef');
         gameAudio.setZone('reef');
+        this.environment.setZone('reef');
 
-        // Atualiza telas
+        // Timers de UI herdados de outras telas
+        if (typeof gameUI.clearPendingTimers === 'function') gameUI.clearPendingTimers();
+
+        // Telas
         gameUI.hideMainMenu();
-        if (gameUI.gameOverScreen) gameUI.gameOverScreen.classList.add('hidden');
-        if (gameUI.pauseScreen) gameUI.pauseScreen.classList.add('hidden');
+        gameUI.setGameOverVisible(false);
+        gameUI.setPauseVisible(false);
+        gameUI.updateHUD({
+            score: 0,
+            health: this.player.health,
+            maxHealth: this.player.maxHealth,
+            timeSeconds: 0,
+            ammo: this.player.ammo,
+            maxAmmo: this.player.maxAmmo,
+            isReloading: false,
+            combo: 1,
+            comboTimer: 0,
+            maxComboTimer: this.maxComboTimer
+        });
 
-        // Anúncio da primeira região
         gameUI.showZoneAnnouncement('Recife');
+        this.input.isMouseDown = false;
+        this.input.joystick.active = false;
     }
 
-    togglePause() {
+    /** Alterna pausa. forcePause=true garante pausar (usado ao perder o foco da aba). */
+    togglePause(forcePause = false) {
         if (this.state === 'PLAYING') {
             this.state = 'PAUSED';
-            if (gameUI.pauseScreen) gameUI.pauseScreen.classList.remove('hidden');
-        } else if (this.state === 'PAUSED') {
+            this.input.isMouseDown = false;
+            gameUI.setPauseVisible(true);
+        } else if (this.state === 'PAUSED' && !forcePause) {
             this.state = 'PLAYING';
-            if (gameUI.pauseScreen) gameUI.pauseScreen.classList.add('hidden');
+            this.lastTime = performance.now();   // evita salto de delta time
+            gameUI.setPauseVisible(false);
         }
     }
 
     returnToMenu() {
         this.state = 'MENU';
+        creatureManager.reset();
+        bulletManager.reset();
+        this.player.reset(this.width / 2, this.height / 2);
+        this.environment.setZone('reef');
         gameAudio.setZone('reef');
+        if (typeof gameUI.clearPendingTimers === 'function') gameUI.clearPendingTimers();
+        gameUI.setGameOverVisible(false);
+        gameUI.setPauseVisible(false);
         gameUI.showMainMenu();
+
+        // Repovoando o cenário do menu com criaturas calmas
+        for (let i = 0; i < 5; i++) {
+            const types = ['peixe_pequeno', 'peixe_palhaco', 'agua_viva', 'tartaruga_marinha', 'peixe_lanterna'];
+            const c = creatureManager.spawnCreature(types[i % types.length], this.width, this.height);
+            c.x = Math.random() * this.width;
+        }
     }
 
-    triggerGameOver() {
-        this.state = 'GAMEOVER';
+    // ================= MORTE E GAME OVER =================
+
+    /**
+     * Aplica dano ao jogador vindo de um ataque de criatura.
+     * Só funciona durante o estado PLAYING (colisões de dano desativadas
+     * automaticamente em DYING/GAMEOVER/PAUSED/MENU).
+     */
+    applyPlayerDamage(creature, amount = 1) {
+        if (this.state !== 'PLAYING') return false;
+        if (!this.player || this.player.dead || this.player.health <= 0) return false;
+
+        const applied = this.player.takeDamage(creature ? creature.x : undefined,
+            creature ? creature.y : undefined);
+
+        if (applied) {
+            this.screenShakeTime = 0.28;
+            this.screenShakeIntensity = 8;
+
+            if (this.player.health <= 0) {
+                this.beginPlayerDeath();
+            } else {
+                // Atualiza o HUD imediatamente (coração perdido aparece na hora)
+                this.pushHUD();
+            }
+        }
+        return applied;
+    }
+
+    /** Entra no estado DYING: congela tudo e prepara a tela de Game Over */
+    beginPlayerDeath() {
+        if (this.state === 'DYING' || this.state === 'GAMEOVER') return;
+
+        this.state = 'DYING';
+        this.deathTimer = this.deathDuration;
+        this.deathFade = 0;
+        this.gameOverPending = true;
+
+        // 1) controles desativados
+        this.input.isMouseDown = false;
+        this.input.joystick.active = false;
+
+        // 2) IA das criaturas interrompida/congelada
+        creatureManager.freezeAll();
+
+        // 3) colisões de dano desativadas (state != PLAYING + guardas)
+        // 4) nenhum novo dano pode ser aplicado
+        this.screenShakeTime = 0.45;
+        this.screenShakeIntensity = 11;
+
+        gameAudio.stopMusic();
         gameAudio.playGameOver();
 
-        // Atualiza ranking e estatísticas no storage
+        this.pushHUD();
+    }
+
+    /** Fim da transição: mostra a tela de Game Over (executado UMA única vez) */
+    finishGameOver() {
+        if (this.state === 'GAMEOVER') return;
+        this.state = 'GAMEOVER';
+        this.gameOverPending = false;
+
+        // Estatísticas / ranking / missões
         const isHighScore = gameStorage.isHighScore(this.score);
         const playerName = gameStorage.getPlayerName();
         gameStorage.saveScore(this.score, playerName);
@@ -329,7 +436,6 @@ class GameEngine {
             timeSeconds: Math.floor(this.gameTimeSeconds)
         });
 
-        // Checa missões
         const m1 = gameStorage.setMissionProgress('first_dive', this.creaturesKilled);
         const m2 = gameStorage.setMissionProgress('score_1k', this.score);
         const m3 = gameStorage.setMissionProgress('score_10k', this.score);
@@ -339,7 +445,8 @@ class GameEngine {
             if (m) gameUI.showToast('Missão Cumprida!', m.title, '🏆');
         });
 
-        // Mostra a tela de Game Over
+        // Tela de Game Over (sempre exibida, com botão de reiniciar operante)
+        gameUI.setPauseVisible(false);
         gameUI.showGameOver({
             score: this.score,
             highScore: gameStorage.getBestScore(),
@@ -369,11 +476,11 @@ class GameEngine {
         if (newZone !== this.currentZone) {
             this.currentZone = newZone;
             creatureManager.setZone(newZone);
+            this.environment.setZone(newZone);   // <- novo cenário da região
             gameAudio.setZone(newZone);
             gameAudio.playSonar();
             gameUI.showZoneAnnouncement(zoneTitle);
 
-            // Verifica desbloqueios de skins por pontuação
             const newSkins = gameStorage.checkSkinUnlocksByScore(this.score);
             newSkins.forEach(skinName => {
                 gameUI.showToast('Nova Skin Desbloqueada!', skinName, '👨🚀');
@@ -384,11 +491,9 @@ class GameEngine {
     registerKill(creature) {
         this.creaturesKilled += 1;
 
-        // Incrementa combo
         this.comboKills += 1;
         this.comboTimer = this.maxComboTimer;
 
-        // Determina novo multiplicador
         let newMultiplier = 1;
         if (this.comboKills >= 50) newMultiplier = 5;
         else if (this.comboKills >= 30) newMultiplier = 4;
@@ -403,26 +508,24 @@ class GameEngine {
             this.maxComboReached = this.comboMultiplier;
         }
 
-        // Calcula pontuação com multiplicador de combo
         const earnedPoints = creature.type.points * this.comboMultiplier;
         this.score += earnedPoints;
 
-        // Registra maior criatura derrotada
-        this.largestCreatureName = creature.type.name;
+        if (creature.type.points > this.largestCreaturePoints) {
+            this.largestCreaturePoints = creature.type.points;
+            this.largestCreatureName = creature.type.name;
+        }
 
-        // Efeitos visuais
         bulletManager.addCreatureDefeatFX(creature.x, creature.y, creature.type.size);
-        bulletManager.addFloatingText(`+${earnedPoints}`, creature.x, creature.y - 15, '#ffe600', creature.type.tier === 'common' ? 18 : 24);
+        bulletManager.addFloatingText(`+${earnedPoints}`, creature.x, creature.y - 15, '#ffe600',
+            creature.type.tier === 'common' ? 18 : 24);
 
-        // Chance de drop de moeda
         if (Math.random() < 0.4 || creature.type.tier !== 'common') {
             bulletManager.spawnCoin(creature.x, creature.y, 50);
         }
 
-        // Som de derrota
         gameAudio.playDefeat(creature.type.tier);
 
-        // Atualiza missões específicas
         if (creature.typeId === 'tubarao' || creature.typeId === 'tubarao_martelo') {
             const m = gameStorage.updateMissionProgress('shark_slayer', 1);
             if (m) gameUI.showToast('Missão Cumprida!', m.title, '🦈');
@@ -436,24 +539,54 @@ class GameEngine {
             if (m) gameUI.showToast('Missão Cumprida!', m.title, '👾');
         }
 
-        // Checa transição de região
         this.checkZoneProgression();
     }
 
     // ================= LOOP PRINCIPAL =================
 
     loop(currentTime) {
-        const dt = Math.min((currentTime - this.lastTime) / 1000, 0.1);
+        // O próximo frame é SEMPRE agendado antes de qualquer cálculo:
+        // assim nenhum erro pontual consegue "matar" o loop do jogo.
+        this.loopId = requestAnimationFrame((t) => this.loop(t));
+
+        let dt = (currentTime - this.lastTime) / 1000;
         this.lastTime = currentTime;
+        if (!isFinite(dt) || dt < 0) dt = 0.016;
+        dt = Math.min(dt, 0.05);              // proteção contra saltos (trocas de aba)
+        this.lastDt = dt;
 
-        this.update(dt);
-        this.render();
+        try {
+            this.update(dt);
+        } catch (err) {
+            this.handleRuntimeError(err, 'update');
+        }
 
-        requestAnimationFrame((t) => this.loop(t));
+        try {
+            this.render();
+        } catch (err) {
+            this.handleRuntimeError(err, 'render');
+        }
+    }
+
+    /** Rede de segurança: um erro de frame não pode travar o jogo */
+    handleRuntimeError(err, phase) {
+        if (window.console) console.error(`[DEEP HUNT] erro em ${phase}:`, err);
+        this.errorCount++;
+        if (this.errorCount > 90 && this.state !== 'GAMEOVER' && this.state !== 'MENU') {
+            // Estado seguro: permite ao jogador reiniciar em vez de travar
+            this.state = 'GAMEOVER';
+            try { gameUI.showGameOver({
+                score: this.score,
+                highScore: gameStorage.getBestScore(),
+                isNewRecord: false,
+                creaturesKilled: this.creaturesKilled,
+                maxCombo: this.maxComboReached
+            }); } catch (e) { /* silencioso */ }
+        }
     }
 
     update(dt) {
-        // Atualiza partículas de água ambientes
+        // Partículas de água ambientes (sempre animadas, em qualquer tela)
         for (const p of this.ambientBubbles) {
             p.update(dt);
             if (p.dead) {
@@ -464,23 +597,52 @@ class GameEngine {
             }
         }
 
-        // Animação de fundo no Menu Principal com criaturas passando suavemente
+        // ---------- MENU ----------
         if (this.state === 'MENU') {
-            const dummyPlayer = { x: -9999, y: -9999, vx: 0, vy: 0, radius: 0 };
-            creatureManager.update(dt, dummyPlayer, 0, this.width, this.height);
+            const dummyPlayer = { x: -9999, y: -9999, vx: 0, vy: 0, radius: 0, dead: true, health: 0 };
+            creatureManager.update(dt, dummyPlayer, 0, this.width, this.height, null);
+            return;
+        }
+
+        // ---------- PAUSA ----------
+        if (this.state === 'PAUSED') return;
+
+        // ---------- MORTE (transição para o Game Over) ----------
+        if (this.state === 'DYING') {
+            this.deathTimer -= dt;
+            this.deathFade = Math.min(1, this.deathFade + dt * 1.1);
+
+            // Jogador afunda, sem controles, sem dano
+            this.player.update(dt, this.input, this.width, this.height, false);
+            // Criaturas congeladas (nenhuma IA, nenhum ataque)
+            creatureManager.update(dt, this.player, this.score, this.width, this.height, null);
+            bulletManager.updateVisualsOnly(dt);
+
+            if (this.screenShakeTime > 0) this.screenShakeTime -= dt;
+
+            if (this.deathTimer <= 0) {
+                this.finishGameOver();
+            }
+            return;
+        }
+
+        // ---------- GAME OVER (cena congelada + efeitos) ----------
+        if (this.state === 'GAMEOVER') {
+            bulletManager.updateVisualsOnly(dt);
+            if (this.screenShakeTime > 0) this.screenShakeTime -= dt;
             return;
         }
 
         if (this.state !== 'PLAYING') return;
 
+        // ===================== GAMEPLAY =====================
         this.gameTimeSeconds += dt;
 
-        // Disparo contínuo se segurar o botão
         if (this.input.isMouseDown) {
             this.player.tryShoot();
         }
 
-        // Atualiza combo timer
+        // Combo
         if (this.comboTimer > 0) {
             this.comboTimer -= dt;
             if (this.comboTimer <= 0) {
@@ -489,13 +651,17 @@ class GameEngine {
             }
         }
 
-        // Atualiza Player
-        this.player.update(dt, this.input, this.width, this.height);
+        // Jogador
+        this.player.update(dt, this.input, this.width, this.height, true);
 
-        // Atualiza Criaturas
-        creatureManager.update(dt, this.player, this.score, this.width, this.height);
+        // Criaturas (IA + ataques -> dano ao jogador com hit único)
+        creatureManager.update(dt, this.player, this.score, this.width, this.height,
+            (creature, amount) => this.applyPlayerDamage(creature, amount));
 
-        // Atualiza Tiros e Partículas
+        // Se o jogador morreu durante a IA, o update termina aqui
+        if (this.state !== 'PLAYING') return;
+
+        // Tiros, partículas e moedas
         bulletManager.update(dt, this.player, (coin) => {
             this.score += coin.value;
             gameAudio.playCoin();
@@ -503,15 +669,14 @@ class GameEngine {
             this.checkZoneProgression();
         });
 
-        // Detecta Colisões: Tiros vs Criaturas
+        // Colisões: Tiros vs Criaturas
         for (let bIdx = bulletManager.bullets.length - 1; bIdx >= 0; bIdx--) {
             const bullet = bulletManager.bullets[bIdx];
             for (let cIdx = creatureManager.creatures.length - 1; cIdx >= 0; cIdx--) {
                 const creature = creatureManager.creatures[cIdx];
                 const dist = Math.hypot(bullet.x - creature.x, bullet.y - creature.y);
 
-                if (dist < bullet.radius + creature.radius) {
-                    // Colisão confirmada
+                if (dist < bullet.radius + creature.radius * 0.9) {
                     bullet.dead = true;
                     bulletManager.addHitImpact(bullet.x, bullet.y, bullet.color);
 
@@ -524,28 +689,30 @@ class GameEngine {
             }
         }
 
-        // Detecta Colisões: Criaturas vs Player
+        // Colisões de CONTATO: apenas águas-vivas ferroam (com cooldown individual).
+        // Predadores causam dano exclusivamente pelo estado ATTACK (1 hit por ataque).
         for (const creature of creatureManager.creatures) {
+            if (!creature || creature.dead) continue;
+            const mode = creature.ai ? creature.ai.mode : 'swim';
+            if (mode !== 'drift') continue;
+            if (creature.attackCooldown > 0) continue;
+
             const dist = Math.hypot(this.player.x - creature.x, this.player.y - creature.y);
-            if (dist < this.player.radius + creature.radius * 0.75) {
-                const tookDamage = this.player.takeDamage();
-                if (tookDamage) {
-                    this.screenShakeTime = 0.25;
-                    this.screenShakeIntensity = 7;
-                    if (this.player.health <= 0) {
-                        this.triggerGameOver();
-                        break;
-                    }
+            if (dist < this.player.radius + creature.radius * 0.7) {
+                const applied = this.applyPlayerDamage(creature, 1);
+                if (applied) {
+                    creature.attackCooldown = 2.6;   // cooldown individual do ferrão
                 }
+                if (this.state !== 'PLAYING') return;
             }
         }
 
-        // Atualiza Screen Shake
-        if (this.screenShakeTime > 0) {
-            this.screenShakeTime -= dt;
-        }
+        if (this.screenShakeTime > 0) this.screenShakeTime -= dt;
 
-        // Atualiza HUD
+        this.pushHUD();
+    }
+
+    pushHUD() {
         gameUI.updateHUD({
             score: this.score,
             health: this.player.health,
@@ -556,129 +723,60 @@ class GameEngine {
             isReloading: this.player.isReloading,
             combo: this.comboMultiplier,
             comboTimer: this.comboTimer,
-            maxComboTimer: this.maxComboTimer
+            maxComboTimer: this.maxComboTimer,
+            zone: this.currentZone
         });
     }
 
     // ================= RENDERIZAÇÃO =================
 
     render() {
-        this.ctx.save();
+        const ctx = this.ctx;
+        ctx.save();
 
-        // Aplica tremor de tela em caso de dano
+        // Tremor de tela
         if (this.screenShakeTime > 0) {
             const ox = (Math.random() - 0.5) * this.screenShakeIntensity;
             const oy = (Math.random() - 0.5) * this.screenShakeIntensity;
-            this.ctx.translate(ox, oy);
+            ctx.translate(ox, oy);
         }
 
-        // 1. Fundo do Oceano e Gradiente de Profundidade
-        this.drawOceanBackground();
+        const playerAlive = this.state === 'PLAYING' || this.state === 'PAUSED' ||
+            this.state === 'DYING' || this.state === 'GAMEOVER';
 
-        // 2. Camadas de Parallax: Ruínas subaquáticas e silhuetas
-        this.drawParallaxScenery();
+        // 1) CENÁRIO: água, navio naufragado, rochas, areia, corais,
+        //    algas balançando, neve marinha e raios de luz
+        this.environment.drawBack(ctx, this.lastDt, playerAlive ? this.player : null);
 
-        // 3. Partículas de água ambientes
+        // 2) Partículas de água ambientes
         for (const p of this.ambientBubbles) {
-            p.draw(this.ctx);
+            p.draw(ctx);
         }
 
-        // 4. Criaturas Marinhas
-        creatureManager.draw(this.ctx);
+        // 3) Criaturas marinhas
+        creatureManager.draw(ctx);
 
-        // 5. Moedas, Tiros e Efeitos Visuais
-        bulletManager.draw(this.ctx);
+        // 4) Moedas, tiros e efeitos
+        bulletManager.draw(ctx);
 
-        // 6. Mergulhador
-        if (this.state === 'PLAYING' || this.state === 'PAUSED') {
-            this.player.draw(this.ctx);
-            this.drawCrosshair();
+        // 5) Mergulhador + mira
+        if (playerAlive) {
+            this.player.draw(ctx);
+            if (this.state === 'PLAYING') this.drawCrosshair();
         }
 
-        this.ctx.restore();
-    }
+        // 6) Primeiro plano: faixa inferior, vinheta de profundidade
+        this.environment.drawFront(ctx);
 
-    drawOceanBackground() {
-        // Paletas de fundo por região
-        const zoneGradients = {
-            reef: ['#0077b6', '#023e8a', '#03045e'],
-            deep: ['#023e8a', '#0b1354', '#010526'],
-            abyss: ['#0b1354', '#0d1137', '#020310'],
-            unknown: ['#240046', '#10002b', '#030008']
-        };
-
-        const colors = zoneGradients[this.currentZone] || zoneGradients.reef;
-        const grad = this.ctx.createLinearGradient(0, 0, 0, this.height);
-        grad.addColorStop(0, colors[0]);
-        grad.addColorStop(0.55, colors[1]);
-        grad.addColorStop(1, colors[2]);
-
-        this.ctx.fillStyle = grad;
-        this.ctx.fillRect(0, 0, this.width, this.height);
-
-        // Raios de sol na superfície (caustics)
-        this.ctx.save();
-        this.ctx.globalAlpha = 0.08;
-        this.ctx.fillStyle = '#ffffff';
-        for (let i = 0; i < 7; i++) {
-            const x = (i * 200 + Math.sin(this.lastTime * 0.001 + i) * 60);
-            this.ctx.beginPath();
-            this.ctx.moveTo(x - 50, 0);
-            this.ctx.lineTo(x + 50, 0);
-            this.ctx.lineTo(x + 160, this.height);
-            this.ctx.lineTo(x - 10, this.height);
-            this.ctx.closePath();
-            this.ctx.fill();
+        // 7) Overlays de dano/morte
+        if (this.player.hurtFlashTimer > 0) {
+            this.environment.drawDamageOverlay(ctx, Math.min(1, this.player.hurtFlashTimer / 0.45));
         }
-        this.ctx.restore();
-    }
-
-    drawParallaxScenery() {
-        const time = this.lastTime * 0.001;
-
-        // Camada 1: Silhuetas distantes de colunas e naufrágios
-        this.ctx.fillStyle = 'rgba(2, 12, 35, 0.45)';
-        // Coluna Atlante 1
-        this.ctx.fillRect(180, this.height - 240, 45, 240);
-        this.ctx.fillRect(165, this.height - 255, 75, 18);
-        // Coluna Atlante 2
-        this.ctx.fillRect(880, this.height - 300, 50, 300);
-        this.ctx.fillRect(860, this.height - 315, 90, 18);
-        // Naufrágio silhueta
-        this.ctx.beginPath();
-        this.ctx.moveTo(480, this.height - 80);
-        this.ctx.lineTo(580, this.height - 180);
-        this.ctx.lineTo(660, this.height - 170);
-        this.ctx.lineTo(720, this.height - 80);
-        this.ctx.closePath();
-        this.ctx.fill();
-
-        // Camada 2: Corais e vegetação ondulante no solo marítimo
-        this.ctx.fillStyle = this.currentZone === 'unknown' ? '#3c096c' : '#041c32';
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, this.height);
-        for (let x = 0; x <= this.width; x += 40) {
-            const h = 45 + Math.sin(x * 0.015 + time) * 15;
-            this.ctx.lineTo(x, this.height - h);
+        if (this.state === 'DYING' || this.state === 'GAMEOVER') {
+            this.environment.drawDeathOverlay(ctx, this.deathFade);
         }
-        this.ctx.lineTo(this.width, this.height);
-        this.ctx.closePath();
-        this.ctx.fill();
 
-        // Plantas marinhas e algas ondulantes
-        this.ctx.strokeStyle = this.currentZone === 'unknown' ? 'rgba(157, 78, 221, 0.6)' : 'rgba(0, 180, 216, 0.5)';
-        this.ctx.lineWidth = 4;
-        for (let i = 60; i < this.width; i += 120) {
-            this.ctx.beginPath();
-            this.ctx.moveTo(i, this.height - 20);
-            this.ctx.quadraticCurveTo(
-                i + Math.sin(time * 2 + i) * 22,
-                this.height - 80,
-                i + Math.cos(time * 1.5 + i) * 15,
-                this.height - 140
-            );
-            this.ctx.stroke();
-        }
+        ctx.restore();
     }
 
     drawCrosshair() {
@@ -688,7 +786,6 @@ class GameEngine {
         this.ctx.save();
         this.ctx.translate(mx, my);
 
-        // Anel da mira
         this.ctx.strokeStyle = '#00f7ff';
         this.ctx.shadowColor = '#00f7ff';
         this.ctx.shadowBlur = 8;
@@ -698,7 +795,6 @@ class GameEngine {
         this.ctx.arc(0, 0, 12, 0, Math.PI * 2);
         this.ctx.stroke();
 
-        // Traços cardeais da mira
         this.ctx.beginPath();
         this.ctx.moveTo(-18, 0);
         this.ctx.lineTo(-7, 0);
@@ -710,7 +806,6 @@ class GameEngine {
         this.ctx.lineTo(0, 18);
         this.ctx.stroke();
 
-        // Ponto central
         this.ctx.fillStyle = '#ffffff';
         this.ctx.beginPath();
         this.ctx.arc(0, 0, 2, 0, Math.PI * 2);
